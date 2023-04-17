@@ -1,99 +1,170 @@
-"use strict";
+// plugin
+Matter.use('matter-wrap');
 
-//==========
-// Matter.js
+let floatyBubbles = {
+	// customizable options (passed into init function)
+    options: {
+		canvasSelector: '',				// to find <canvas> in DOM to draw on
+		radiusRange: [50, 100],			// random range of body radii
+		xVarianceRange: [-0.5, 0.5],	// random range of x velocity scaling on bodies
+		yVarianceRange: [0.5, 1.5],		// random range of y velocity scaling on bodies
+		airFriction: 0.03,				// air friction of bodies
+		opacity: 1,						// opacity of bodies
+		collisions: true,				// do bodies collide or pass through
+		scrollVelocity: 0.025,			// scaling of scroll delta to velocity applied to bodies
+		pixelsPerBody: 50000,			// viewport pixels required for each body added
 
-//指定したIDを取得
-var stage = document.getElementById('tsparticles');
+		// colors to cycle through to fill bodies
+		colors: ["#ebedf0",
+        "#9be9a8",
+        "#40c463",
+        "#30a14e",
+        "#216e39"]
+	},
 
-var Example = Example || {};
+	// throttling intervals (in ms)
+	scrollDelay: 100,
+	resizeDelay: 400,
 
-Example.pyramid = function() {
-    var Engine = Matter.Engine,
-        Render = Matter.Render,
-        Runner = Matter.Runner,
-        Composites = Matter.Composites,
-        MouseConstraint = Matter.MouseConstraint,
-        Mouse = Matter.Mouse,
-        Composite = Matter.Composite,
-        Bodies = Matter.Bodies;
+	// throttling variables and timeouts
+	lastOffset: undefined,
+	scrollTimeout: undefined,
+	resizeTimeout: undefined,
 
-    // create engine
-    var engine = Engine.create(),
-        world = engine.world;
+	// Matter.js objects
+	engine: undefined,
+	render: undefined,
+	runner: undefined,
+	bodies: undefined,
 
-    // create renderer
-    var render = Render.create({
-        element: stage,
-        engine: engine,
-        options: {
-            width: 800,
-            height: 600,
-            showAngleIndicator: true,
-            wireframes: true,
-            background: '#000000',
-        }
-    });
+	// kicks things off
+	init(options) {
+		// override default options with incoming options
+		this.options = Object.assign({}, this.options, options);
 
-    Render.run(render);
+		let viewportWidth = document.documentElement.clientWidth;
+		let viewportHeight = document.documentElement.clientHeight;
 
-    // create runner
-    var runner = Runner.create();
-    Runner.run(runner, engine);
+		this.lastOffset = window.pageYOffset;
+		this.scrollTimeout = null;
+		this.resizeTimeout = null;
+	
+		// engine
+		this.engine = Matter.Engine.create();
+		this.engine.world.gravity.y = 0.0;
+	
+		// render
+		this.render = Matter.Render.create({
+			canvas: document.querySelector(this.options.canvasSelector),
+			engine: this.engine,
+			options: {
+				width: viewportWidth,
+				height: viewportHeight,
+				wireframes: false,
+				background: 'transparent'
+			}
+		});
+		Matter.Render.run(this.render);
+	
+		// runner
+		this.runner = Matter.Runner.create();
+		Matter.Runner.run(this.runner, this.engine);
+	
+		// bodies
+		this.bodies = [];
+		let totalBodies = Math.round(viewportWidth * viewportHeight / this.options.pixelsPerBody);
+		for (let i = 0; i <= totalBodies; i++) {
+			let body = this.createBody(viewportWidth, viewportHeight);
+			this.bodies.push(body);
+		}
+		Matter.World.add(this.engine.world, this.bodies);
 
-    // add bodies
-    var stack = Composites.pyramid(100, 605 - 25 - 16 * 20, 15, 10, 0, 0, function(x, y) {
-        return Bodies.rectangle(x, y, 40, 40);
-    });
-    
-    Composite.add(world, [
-        stack,
-        // walls
-        Bodies.rectangle(400, 0, 800, 50, { isStatic: true }),
-        Bodies.rectangle(800, 300, 50, 600, { isStatic: true }),
-        Bodies.rectangle(0, 300, 50, 600, { isStatic: true }),
-        Bodies.rectangle(400, 605, 800, 50, { isStatic: true })
-    ]);
+		// events
+		window.addEventListener('scroll', this.onScrollThrottled.bind(this));
+		window.addEventListener('resize', this.onResizeThrottled.bind(this));
+	},
+	
+	// stop all the things
+	shutdown() {
+		Matter.Engine.clear(this.engine);
+		Matter.Render.stop(this.render);
+		Matter.Runner.stop(this.runner);
 
-    // add mouse control
-    var mouse = Mouse.create(render.canvas),
-        mouseConstraint = MouseConstraint.create(engine, {
-            mouse: mouse,
-            constraint: {
-                stiffness: 0.2,
-                render: {
-                    visible: false
-                }
-            }
-        });
+		window.removeEventListener('scroll', this.onScrollThrottled);
+		window.removeEventListener('resize', this.onResizeThrottled);
+	},
+	
+	// random number generator
+	randomize(range) {
+		let [min, max] = range;
+		return Math.random() * (max - min) + min;
+	},
+	
+	// create body with some random parameters
+	createBody(viewportWidth, viewportHeight) {
+		let x = this.randomize([0, viewportWidth]);
+		let y = this.randomize([0, viewportHeight]);
+		let radius = this.randomize(this.options.radiusRange);
+		let color = this.options.colors[this.bodies.length % this.options.colors.length];
+	
+		return Matter.Bodies.circle(x, y, radius, {
+			render: {
+				fillStyle: color,
+				opacity: this.options.opacity
+			},
+			frictionAir: this.options.airFriction,
+			collisionFilter: {
+				group: this.options.collisions ? 1 : -1
+			},
+			plugin: {
+				wrap: {
+					min: { x: 0, y: 0 },
+					max: { x: viewportWidth, y: viewportHeight }
+				}
+			}
+		});
+	},
+	
+	// enforces throttling of scroll handler
+	onScrollThrottled() {
+		if (!this.scrollTimeout) {
+			this.scrollTimeout = setTimeout(this.onScroll.bind(this), this.scrollDelay);
+		}
+	},
+	
+	// applies velocity to bodies based on scrolling with some randomness
+	onScroll() {
+		this.scrollTimeout = null;
 
-    Composite.add(world, mouseConstraint);
-
-    // keep the mouse in sync with rendering
-    render.mouse = mouse;
-
-    // fit the render viewport to the scene
-    Render.lookAt(render, {
-        min: { x: 0, y: 0 },
-        max: { x: 800, y: 600 }
-    });
-
-    // context for MatterTools.Demo
-    return {
-        engine: engine,
-        runner: runner,
-        render: render,
-        canvas: render.canvas,
-        stop: function() {
-            Matter.Render.stop(render);
-            Matter.Runner.stop(runner);
-        }
-    };
+		let delta = (this.lastOffset - window.pageYOffset) * this.options.scrollVelocity;
+		this.bodies.forEach((body) => {
+			Matter.Body.setVelocity(body, {
+				x: body.velocity.x + delta * this.randomize(this.options.xVarianceRange),
+				y: body.velocity.y + delta * this.randomize(this.options.yVarianceRange)
+			});
+		});
+	
+		this.lastOffset = window.pageYOffset;
+	},
+	
+	// enforces throttling of resize handler
+	onResizeThrottled() {
+		if (!this.resizeTimeout) {
+			this.resizeTimeout = setTimeout(this.onResize.bind(this), this.resizeDelay);
+		}
+	},
+	
+	// restart everything with the new viewport size
+	onResize() {
+		this.shutdown();
+		this.init();
+	}
 };
 
-Example.pyramid.title = 'Pyramid';
-Example.pyramid.for = '>=0.14.2';
-
-if (typeof module !== 'undefined') {
-    module.exports = Example.pyramid;
-}
+// wait for DOM to load
+window.addEventListener('DOMContentLoaded', () => {
+	// start floaty bubbles background
+	Object.create(floatyBubbles).init({
+        canvasSelector: '#background'
+    });
+});
