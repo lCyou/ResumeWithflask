@@ -51,7 +51,7 @@ let floatyBubbles = {
 	
 		// engine
 		this.engine = Matter.Engine.create();
-		this.engine.world.gravity.y = 0.0;
+		this.engine.world.gravity.y = 0.01;
 	
 		// render
 		this.render = Matter.Render.create({
@@ -107,7 +107,8 @@ let floatyBubbles = {
 		let radius = this.randomize(this.options.radiusRange);
 		let color = this.options.colors[this.bodies.length % this.options.colors.length];
 	
-		return Matter.Bodies.circle(x, y, radius, {
+		return Matter.Bodies.rectangle(x, y, radius*1.5, radius*1.5, {
+            chamfer: {radius: 12},
 			render: {
 				fillStyle: color,
 				opacity: this.options.opacity
