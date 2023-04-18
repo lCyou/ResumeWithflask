@@ -1,3 +1,8 @@
+.DS_Store
+
 __pycache__
 flask_session
 .env
+matter-js-0.12.0
+node_modules
+
