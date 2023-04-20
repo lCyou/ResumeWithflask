@@ -51,7 +51,7 @@ let floatyBubbles = {
 	
 		// engine
 		this.engine = Matter.Engine.create();
-		this.engine.world.gravity.y = 0.01;
+		this.engine.world.gravity.y = 0.0;
 	
 		// render
 		this.render = Matter.Render.create({
@@ -99,6 +99,11 @@ let floatyBubbles = {
 		let [min, max] = range;
 		return Math.random() * (max - min) + min;
 	},
+
+	// create frame by body
+	createFrameByBody(viewportWidth, viewportHeight) {
+		Matter.bodies.rectangle()
+	},
 	
 	// create body with some random parameters
 	createBody(viewportWidth, viewportHeight) {
@@ -107,8 +112,9 @@ let floatyBubbles = {
 		let radius = this.randomize(this.options.radiusRange);
 		let color = this.options.colors[this.bodies.length % this.options.colors.length];
 	
-		return Matter.Bodies.rectangle(x, y, radius*1.5, radius*1.5, {
+		return Matter.Bodies.rectangle(x, y, radius*1.7, radius*1.7, {
             chamfer: {radius: radius*0.2},
+			isSensor: true,
 			render: {
 				fillStyle: color,
 				opacity: this.options.opacity
